@@ -1,0 +1,460 @@
+# myTeam.py
+# ---------
+# Licensing Information:  You are free to use or extend these projects for
+# educational purposes provided that (1) you do not distribute or publish
+# solutions, (2) you retain this notice, and (3) you provide clear
+# attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
+# 
+# Attribution Information: The Pacman AI projects were developed at UC Berkeley.
+# The core projects and autograders were primarily created by John DeNero
+# (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
+# Student side autograding was added by Brad Miller, Nick Hay, and
+# Pieter Abbeel (pabbeel@cs.berkeley.edu).
+
+# Rishi Chandra - rxc170008
+# Kinsey Mellon - ksm180006
+
+from captureAgents import CaptureAgent
+import random, time, util, sys
+from game import Directions
+import game
+from util import nearestPoint
+
+
+#################
+# Team creation #
+#################
+
+def createTeam(firstIndex, secondIndex, isRed,
+               first = 'OffensiveAgent', second = 'DefensiveAgent'):
+  """
+  This function should return a list of two agents that will form the
+  team, initialized using firstIndex and secondIndex as their agent
+  index numbers.  isRed is True if the red team is being created, and
+  will be False if the blue team is being created.
+
+  As a potentially helpful development aid, this function can take
+  additional string-valued keyword arguments ("first" and "second" are
+  such arguments in the case of this function), which will come from
+  the --redOpts and --blueOpts command-line arguments to capture.py.
+  For the nightly contest, however, your team will be created without
+  any extra arguments, so you should make sure that the default
+  behavior is what you want for the nightly contest.
+  """
+
+  # The following line is an example only; feel free to change it.
+  return [eval(first)(firstIndex), eval(second)(secondIndex)]
+
+##########
+# Agents #
+##########
+class DummyAgent(CaptureAgent):
+  """
+  A Dummy agent to serve as an example of the necessary agent structure.
+  You should look at baselineTeam.py for more details about how to
+  create an agent as this is the bare minimum.
+  """
+
+  def registerInitialState(self, gameState):
+    """
+    This method handles the initial setup of the
+    agent to populate useful fields (such as what team
+    we're on).
+
+    A distanceCalculator instance caches the maze distances
+    between each pair of positions, so your agents can use:
+    self.distancer.getDistance(p1, p2)
+
+    IMPORTANT: This method may run for at most 15 seconds.
+    """
+
+    '''
+    Make sure you do not delete the following line. If you would like to
+    use Manhattan distances instead of maze distances in order to save
+    on initialization time, please take a look at
+    CaptureAgent.registerInitialState in captureAgents.py.
+    '''
+    CaptureAgent.registerInitialState(self, gameState)
+
+    '''
+    Your initialization code goes here, if you need any.
+    '''
+    self.DISTANCE_THRESHOLD = 10
+
+
+  def chooseAction(self, gameState):
+    """
+    Picks among actions randomly.
+    """
+    actions = gameState.getLegalActions(self.index)
+
+    '''
+    You should change this in your own agent.
+    '''
+    return random.choice(actions)
+
+  def bfsSelect(self, gameState, init_actions, thresh, heuristic):
+    """
+    Returns the action that results in the best outcome after a specified threshold number of iterations
+    """    
+    init_pos = gameState.getAgentState(self.index).getPosition()
+    start_time = time.time()
+    pq = util.PriorityQueue()
+    visited = set()
+
+    pq.push([[], gameState, 0], 0)
+
+    while not pq.isEmpty():
+      if (time.time() - start_time > .95):
+        #print ("TIMEOUT ON " + heuristic.__name__ + " taking " + str(time.time() - start_time))
+        return random.choice(init_actions)
+
+      curr_move = pq.pop()
+
+      curr_state = curr_move[1]
+      curr_pos = curr_state.getAgentState(self.index).getPosition()
+      
+      
+      foodList = self.getFood(curr_state).asList()
+      capList = self.getCapsules(curr_state)
+      scared = self.distanceToScaredGhosts(curr_state)
+      
+      cache_entry = None
+      if heuristic.__name__ == "foodHeurisitic":
+        cache_entry = (curr_pos, len(foodList))
+      elif heuristic.__name__ == "capsuleHeurisitic":
+        cache_entry = (curr_pos, len(capList))
+      elif heuristic.__name__ == "attackHeursistic":
+        cache_entry = (curr_pos, len(scared), sum(scared))
+      else:
+        cache_entry = curr_pos
+
+      if cache_entry not in visited:
+        visited.add(cache_entry)
+      
+        curr_level = curr_move[2]
+        if (curr_level >= thresh):
+          return curr_move[0][0]
+          
+        actions = curr_state.getLegalActions(self.index)
+        for action in actions:
+          if action != 'Stop':      
+            new_state = curr_state.generateSuccessor(self.index, action)
+            new_cost = heuristic(new_state, curr_level)
+            new_move_list = list(curr_move[0])
+            new_move_list.append(action)
+            pq.push([new_move_list, new_state, curr_level + 1], new_cost)
+
+    #print ("RANDOM")
+    return random.choice(init_actions)
+
+  def distanceToNearbyGhosts(self, gameState):
+    """
+    Function to determine the number of nearby ghosts and the distance
+    """
+    ghosts = []
+    curr_self = gameState.getAgentState(self.index)
+    pos = curr_self.getPosition()
+    opps = self.getOpponents(gameState)
+    for o in opps:
+      opp = gameState.getAgentState(o)
+      dist = self.getMazeDistance(pos, opp.getPosition())
+      if dist <= self.DISTANCE_THRESHOLD / 2:
+          # If an actual ghost
+          if (not opp.isPacman and curr_self.isPacman and opp.scaredTimer == 0):
+            ghosts.append(dist)
+
+    return ghosts
+
+  def distanceToAllGhosts(self, gameState):
+    """
+    Function to determine the number of ghosts and the distance
+    """
+    ghosts = []
+    curr_self = gameState.getAgentState(self.index)
+    pos = curr_self.getPosition()
+    opps = self.getOpponents(gameState)
+    for o in opps:
+      opp = gameState.getAgentState(o)
+      dist = self.getMazeDistance(pos, opp.getPosition())
+      # If an actual ghost
+      if (not opp.isPacman and curr_self.isPacman and opp.scaredTimer == 0):
+        ghosts.append(dist)
+
+    return ghosts
+
+  def distanceToScaredGhosts(self, gameState):
+    """
+    Function to determine the number of scared ghosts and the distance
+    """
+    scared = []
+    curr_self = gameState.getAgentState(self.index)
+    pos = curr_self.getPosition()
+    opps = self.getOpponents(gameState)
+    for o in opps:
+      opp = gameState.getAgentState(o)
+      dist = self.getMazeDistance(pos, opp.getPosition())
+      if opp.scaredTimer >= self.DISTANCE_THRESHOLD:
+        scared.append(dist)
+
+    return scared
+
+  def getInvaders(self, myState):
+    #if there is enemy pacman in our side find closest distance
+    #if not we stay on offense and look for food/capsule
+    enemies = [myState.getAgentState(i) for i in self.getOpponents(myState)]
+    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+    return invaders
+
+  def isScared(self, myState):
+    return myState.getAgentState(self.index).scaredTimer
+    
+
+  def initialize(self, gameState):
+    if self.red:
+      self.middleWidth = gameState.data.layout.width / 2-1
+    else:
+      self.middleWidth = gameState.data.layout.width / 2+1 
+    
+    self.noWalls = []
+    for i in range(1,gameState.data.layout.height - 1):
+      if not gameState.hasWall(int(self.middleWidth),i):
+        self.noWalls.append((self.middleWidth,i))
+    
+    defending_caps = None
+    if not self.red:
+      defending_caps = gameState.getBlueCapsules()
+    else:
+      defending_caps = gameState.getRedCapsules()
+
+    self.noWalls.extend(defending_caps)
+
+  def foodHeurisitic(self, state, curr_level):
+    """
+    Food Heurisitc defined by food left and then ties broken by 
+    maze distance to closest food + number of food pellets missed - need to double check logic
+    """
+    foodList = self.getFood(state).asList()
+    pos = state.getAgentState(self.index).getPosition()
+    closest_dist = 0
+    closest_food = None
+    if (len(foodList) > 0):
+      # Find dist to closest food
+      closest_dist = self.getMazeDistance(pos, foodList[0])
+      for food in foodList:
+        dist = self.getMazeDistance(pos, food)
+        if (dist < closest_dist):
+          closest_dist = dist
+          closest_food = food
+
+    for food in foodList:
+      if closest_food and (not closest_food[0] == food[0] or not closest_food[1] == food[1]):
+        closest_dist += 1
+
+    
+    return(len(foodList), closest_dist + curr_level)
+  
+
+  def capsuleHeurisitic(self, state, curr_level):
+    """
+    Capsule Heurisitc defined by capsules left and then ties broken by maze distance to closest capsules
+    """
+    capList = self.getCapsules(state)
+    pos = state.getAgentState(self.index).getPosition()
+    closest_dist = 0
+    if (len(capList) > 0):
+      # Find dist to closest food
+      closest_dist = self.getMazeDistance(pos, capList[0])
+      for cap in capList:
+        dist = self.getMazeDistance(pos, cap)
+        if (dist < closest_dist):
+          closest_dist = dist
+
+    return(len(capList), closest_dist + curr_level)
+
+  def escapeHeurisitc(self, state, curr_level):
+    """
+    Escape Heurisitc defined by maze distance to opponents + distance to saftey
+    """
+    ghosts = self.distanceToNearbyGhosts(state)
+    pos = state.getAgentState(self.index).getPosition()
+    sum = 0
+    for g in ghosts:
+      sum -= g
+
+    closest_center = self.getMazeDistance(pos, self.noWalls[0])
+    for c in self.noWalls:
+      closest_center = min(closest_center, self.getMazeDistance(pos, self.noWalls[0]))
+
+    
+    return (len(ghosts), sum + curr_level, closest_center + curr_level)
+
+  def attackHeursistic(self, state, curr_level):
+    """
+    Attack heurisitc to chase scared ghosts. Defined by maze distance to closest scared ghost
+    """
+    scared = self.distanceToScaredGhosts(state)
+    if (len(scared) == 0):
+      return(len(scared), curr_level)
+
+    return(len(scared), min(scared) + curr_level)
+  
+  def defendHeuristic(self, myState, curr_level):
+    myPos = myState.getAgentState(self.index).getPosition()
+
+    #if there is enemy pacman in our side find closest distance
+    #if not we stay on offense and look for food/capsule
+    invaders = self.getInvaders(myState)
+    if (len(invaders) <= 0):
+      return curr_level
+    
+    distances = []
+    for a in invaders:
+        distances.append(self.getMazeDistance(myPos, a.getPosition()))
+
+   
+    #closest to middle
+    closestMidEnemyDist = min([self.getMazeDistance(x,invaders[0].getPosition()) for x in self.noWalls])
+    if (len(invaders) > 1):
+      closestMidEnemyDist = min(closestMidEnemyDist, min([self.getMazeDistance(x,invaders[1].getPosition()) for x in self.noWalls]))
+    #print (closestMidEnemyDist)
+
+    exitPoint = None
+    #print(self.noWalls)
+    for y in self.noWalls:
+      if self.getMazeDistance(y,invaders[0].getPosition()) == closestMidEnemyDist:
+        exitPoint = y
+      if len(invaders) > 1  and self.getMazeDistance(y,invaders[1].getPosition()) == closestMidEnemyDist:
+        exitPoint = y
+
+    #compute our distance to exit point
+    distToExitpoint = self.getMazeDistance(myPos,exitPoint)
+    
+    return distToExitpoint + curr_level
+
+  def scaredHeuristic(self, myState, curr_level):
+    myPos = myState.getAgentState(self.index).getPosition()
+    closest_center = self.getMazeDistance(myPos, self.noWalls[0])
+    for c in self.noWalls:
+      closest_center = min(closest_center, self.getMazeDistance(myPos, self.noWalls[0]))
+    return closest_center + curr_level
+
+  def aggressiveHeuristic(self, myState, curr_level):
+    myPos = myState.getAgentState(self.index).getPosition()
+    invaders = self.getInvaders(myState)
+    distances = []
+    for a in invaders:
+      distances.append(self.getMazeDistance(myPos, a.getPosition()))
+    
+    if len(distances) > 0:
+      dist = min(distances)
+    else:
+      dist = 0
+    return dist + curr_level
+
+
+class OffensiveAgent(DummyAgent):
+  def chooseAction(self, gameState):
+    actions = gameState.getLegalActions(self.index)
+    #print (gameState.data.timeleft)
+    try:   
+      self.initialize(gameState)
+      
+      ghosts = self.distanceToNearbyGhosts(gameState)
+      all_ghosts = self.distanceToAllGhosts(gameState)
+      scared = self.distanceToScaredGhosts(gameState)
+      capList = self.getCapsules(gameState)
+      foodList = self.getFood(gameState).asList()
+      invaders = self.getInvaders(gameState)
+
+      friend = None
+      team = self.getTeam(gameState)
+      for i in team:
+        if i != self.index:
+          friend = i
+      
+      friend = gameState.getAgentState(friend).getPosition()
+      agent = gameState.getAgentState(self.index).getPosition()
+
+      max_defender_dist = None
+      min_self_dist = None
+      if len(invaders) > 0:
+        max_defender_dist = max([self.getMazeDistance(friend, i.getPosition()) for i in invaders])
+        min_self_dist = min([self.getMazeDistance(agent, i.getPosition()) for i in invaders])
+
+      closest_food = self.foodHeurisitic(gameState, 0)[1]
+      closest_ghost = None
+      if len(all_ghosts) > 0:
+        closest_ghost = min(all_ghosts)
+
+      escape_cost = self.escapeHeurisitc(gameState, 0)[2]
+
+      heuristic = self.foodHeurisitic
+      if len(ghosts) != 0:
+        #print ("NEAR GHOST")
+        heuristic = self.escapeHeurisitc
+      elif len(scared) > 0:
+        #print ("CHASING GHOST")
+        heuristic = self.attackHeursistic
+      elif len(invaders) > 1 or (max_defender_dist and max_defender_dist > min_self_dist  + (self.DISTANCE_THRESHOLD / 2) ):
+      # elif len(invaders) > 1:
+        if self.isScared(gameState) > self.DISTANCE_THRESHOLD / 2:
+          # heuristic = self.scaredHeuristic
+          heuristic = self.foodHeurisitic
+        elif len(self.getFoodYouAreDefending(gameState).asList()) < self.DISTANCE_THRESHOLD:
+          heuristic = self.aggressiveHeuristic
+        else:
+          heuristic = self.defendHeuristic
+      elif len(capList) > 0:
+        heuristic = self.capsuleHeurisitic
+      elif len(foodList) <= 2 or (closest_ghost and closest_ghost + (self.DISTANCE_THRESHOLD / 2) < closest_food) or gameState.data.timeleft < escape_cost * self.DISTANCE_THRESHOLD:
+        heuristic = self.escapeHeurisitc         
+      
+      action = self.bfsSelect(gameState, actions, self.DISTANCE_THRESHOLD, heuristic)
+      return action
+    except:
+      #print ("Error Occured Choosing Action", sys.exc_info())
+      return random.choice(actions)
+  
+  
+class DefensiveAgent(DummyAgent):
+  def chooseAction(self, gameState): 
+    actions = gameState.getLegalActions(self.index)
+    try:   
+      self.initialize(gameState)    
+      
+      invaders = self.getInvaders(gameState)
+      ghosts = self.distanceToNearbyGhosts(gameState)
+      all_ghosts = self.distanceToAllGhosts(gameState)
+      foodList = self.getFood(gameState).asList()
+      
+      escape_cost = self.escapeHeurisitc(gameState, 0)[2]
+
+      closest_food = self.foodHeurisitic(gameState, 0)[1]
+      closest_ghost = None
+      if len(all_ghosts) > 0:
+        closest_ghost = min(all_ghosts)
+        
+      if sum(ghosts) != 0:
+        heuristic = self.escapeHeurisitc        
+      elif len(invaders) > 0:
+        if self.isScared(gameState) > self.DISTANCE_THRESHOLD / 2:
+          # heuristic = self.scaredHeuristic
+          heuristic = self.foodHeurisitic
+          # if len(foodList) <= 2:
+          #   heuristic = self.aggressiveHeuristic
+        elif len(self.getFoodYouAreDefending(gameState).asList()) < 10:
+          heuristic = self.aggressiveHeuristic
+        else:
+          heuristic = self.defendHeuristic
+      else:
+        heuristic = self.foodHeurisitic
+        foodList = self.getFood(gameState).asList()
+        if len(foodList) <= 2 or (closest_ghost and closest_ghost + (self.DISTANCE_THRESHOLD / 2) < closest_food) or gameState.data.timeleft < escape_cost * self.DISTANCE_THRESHOLD:
+          heuristic = self.escapeHeurisitc         
+      
+      action = self.bfsSelect(gameState, actions, self.DISTANCE_THRESHOLD, heuristic)
+      return action
+    except:
+      #print ("Error Occured Choosing Action", sys.exc_info())
+      return random.choice(actions)
