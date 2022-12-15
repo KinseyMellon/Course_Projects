@@ -1,0 +1,132 @@
+---
+title: "R Project Regression Notebook"
+subtitle: "4375 Machine Learning with Dr. Mazidi"
+author: "Kinsey Mellon"
+date: "7/16/22"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+Data website: https://www.kaggle.com/datasets/siddheshera/san-francisco-employee-salary-compensation
+
+### Load the data set into df and do some data cleaning:
+
+  - use mean imputation for any nas
+  - omit rows obvious inconsistencies (in this case working overtime a negative number)
+  - get rid of columns that won't be used (ie. all the job identifiers and employee codes)
+
+```{r}
+library(Hmisc)
+df <- read.csv("Salary_Compensation.csv")
+df <- df[,c(14:22)]
+df <- df[df$Overtime >= 0,]
+df$Overtime <- impute(df$Overtime, fun=mean)
+df$Salaries <- impute(df$Salaries, fun=mean)
+df$Other.Salaries <- impute(df$Other.Salaries, fun=mean)
+df$Other.Benefits <- impute(df$Other.Benefits, fun=mean)
+df$Retirement <- impute(df$Retirement, fun=mean)
+df$Health.and.Dental <- impute(df$Health.and.Dental, fun=mean)
+
+```
+
+### Data exploration:
+
+```{r}
+print(paste("Correlation of total salary and total compensation = ", cor(df$Total.Salary, df$Total.Compensation)))
+print(paste("Number employees working overtime: ",sum(df$Overtime>0)))
+str(df)
+summary(df)
+head(df)
+df2 <- df[,c(1,5,6,9)]
+pairs(df2)
+```
+
+### Graphs
+
+```{r}
+plot(df$Total.Salary, df$Total.Compensation)
+plot(df$Total.Benefits, df$Total.Salary)
+
+```
+
+### Divide df into train and test sets
+
+```{r}
+set.seed(1234)
+i <- sample(1:nrow(df), 0.75*nrow(df), replace=FALSE)
+train <- df[i,]
+test <- df[-i,]
+
+```
+
+### Linear Regression:
+
+#### Commentary: 
+  For the linear regression model I choose to use the salaries, health and dental, and retirement columns as features to predict the total compensation. I choose these because they looked to be pretty highly correlated from the data exploration and I excluded things like total salary and total benefits because the total compensation comes directly from them so it wouldn't be very informative. The correlation the model got was .97 which is very strong, and the model summary also shows that each feature is significant with a small p-value. The RMSE showed that the model was off of an average of $15946. 
+
+```{r}
+lm <- lm(Total.Compensation~ Salaries + Health.and.Dental + Retirement, data=train)
+summary(lm)
+pred <- predict(lm, newdata=test)
+mse <- mean((pred-test$Total.Compensation)^2)
+print(paste("mse = ",mse))
+rmse <- sqrt(mse)
+print(paste("rmse = ",rmse))
+correlation <- cor(pred,test$Total.Compensation)
+print(paste("correlation = ", correlation))
+```
+
+### KNN:
+
+#### Commentary:
+
+  For the KNN model I choose to use the same features to predict total compensation for the same reason as in the linear model. I also chose to use a k value of 1 because after trying different values of k, 1 was the best one. The correlation of the KNN model was .99 which is extremely high and also better than the linear model. The mse shows this model is off by an average of $10778451.
+
+```{r}
+library(caret)
+train2 <- df[,c(1,5,6)]
+train3 <- df[,9]
+
+cor_k <- rep(0, 20)
+mse_k <- rep(0, 20)
+i <- 1
+for (k in seq(1, 39, 2)){
+  fit_k <- knnreg(train2,train3, k=k)
+  pred_k <- predict(fit_k, test[,c(1,5,6)])
+  cor_k[i] <- cor(pred_k, test$Total.Compensation)
+  mse_k[i] <- mean((pred_k - test$Total.Compensation)^2)
+  i <- i + 1
+}
+m <- which.min(mse_k)
+c <- which.max(cor_k)
+print(paste("mse = ", mse_k[m]))
+print(paste("correlation = ", cor_k[c]))
+
+```
+
+### SVM:
+
+#### Commentary:
+
+  I choose the same features as the 2 previous models for the same reasons mentioned. They looked to be pretty correlated as per the data exploration and I excluded some of the other features like total salary and total benefits because total compensation comes directly from those 2 features so it wouldn't be informative if those were used.The correlation of the linear svm model got was .973 which is very strong and the mse showed the model was off by an average of 264844487. I wanted to compare to a different svm kernel and chose to do a radial svm model that got correlation of .979 which is just a smidge better than the linear model. The mse is also lower for the radial svm.
+  
+```{r}
+library(e1071)
+svm1 <-  svm(Total.Compensation~ Salaries + Health.and.Dental + Retirement, data=train, kernel="linear")
+summary(svm1)
+predSvm <- predict(svm1,newdata=test)
+print(paste("correlation = ",cor(predSvm,test$Total.Compensation)))
+print(paste("mse = ",mean((predSvm-test$Total.Compensation)^2)))
+
+svm2 <-  svm(Total.Compensation~ Salaries + Health.and.Dental + Retirement, data=train, kernel="radial")
+summary(svm2)
+predSvm2 <- predict(svm2,newdata=test)
+print(paste("correlation = ",cor(predSvm2,test$Total.Compensation)))
+print(paste("mse = ",mean((predSvm2-test$Total.Compensation)^2)))
+```
+
+### Final Analysis:
+
+  The ranking of these three algorithms on this dataset is KNN coming in first being the best followed by linear regression then SVM. I rank them like that because KNN had the best correlation, it being .99, almost perfect, and having the smallest mse. Both the linear regression and SVM algorithms correlation are pretty much the same at .97 with the radial svm correlation only being slightly better when it gets past the thousands place. I also put svm before linear regression because the mse for svm is smaller than linear regression. I think KNN works really well here because of the low dimensions of the data used. Overall these algorithms used on the data shows that salary, health and dental and retirement benefits are strong predictors of an employees total compensation. This can be pretty useful in the corporate world for people trying to figure out their total compensation if only given a few factors of it especially because the correlations these models got were very strong..

@@ -1,0 +1,182 @@
+---
+title: "Homework 3"
+author: "Kinsey Mellon"
+date: "6/19/22"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+subtitle: 4375 Machine Learning with Dr. Mazidi
+---
+
+This homework runs logistic regression to predict the binary feature of whether or not a person was admitted to graduate school, based on a set of predictors: GRE score, TOEFL score, rating of undergrad university attended, SOP statement of purpose, LOR letter or recommendation, Undergrad GPA, Research experience (binary).
+
+The data set was downloaded from Kaggle: https://www.kaggle.com/mohansacharya/graduate-admissions
+
+The data is available in Piazza. 
+
+## Step 1 Load the data
+
+* Load the data
+* Examine the first few rows with head()
+
+```{r}
+df <- read.csv("Admission_Predict.csv")
+head(df)
+```
+
+## Step 2 Data Wrangling
+
+Perform the following steps:
+
+* Make Research a factor
+* Get rid of the Serial No column
+* Make a new column that is binary factor based on if Chance.of.Admit > 0.5. Hint: See p. 40 in the book. 
+* Output column names with names() function
+* Output a summary of the data
+* Is the data set unbalanced? Why or why not?
+
+ Your commentary here:
+I would say that this data is unbalanced because when the new column was made to hold the binary factor of the chance of admission 365 out of the 400 rows had a greater the 0.5 chance of admission compared to the 35 who didn't.
+
+```{r}
+df$Research <- as.factor(df$Research)
+df <- df[,c(2,3,4,5,6,7,8,9)]
+df$Chance.greater.Than.Half <- FALSE
+df$Chance.greater.Than.Half[df$Chance.of.Admit>0.5] <- TRUE
+#df$Chance.of.Admit.Binary <- factor(df$Chance.of.Admit.Binary)
+names(df)
+```
+
+```{r}
+summary(df)
+```
+
+## Step 3 Data Visualization
+
+* Create a side-by-side graph with Admit on the x axis of both graphs, GRE score on the y axis of one graph and TOEFL score on the y axis of the other graph; save/restore the original graph parameters
+* Comment on the graphs and what they are telling you about whether GRE and TOEFL are good predictors
+* You will get a lot of warnings, you can suppress them with disabling warnings as shown below:
+
+```
+{r,warning=FALSE}
+```
+
+Your commentary here:
+I think that overall GRE and TOEFL scores both are pretty good predictors of admission because as the scores go up the chance if admission also goes up. Of course the fit isn't perfect because if you look at the middle sections and more towards the bottom of the x axis there are some lower chances of admission with a little higher scores than what there would be if both the scores were perfect predictors.
+
+```{r,warning=FALSE}
+opar <- par()
+par(mfrow=c(1,2))
+plot(df$Chance.of.Admit,df$GRE.Score)
+plot(df$Chance.of.Admit,df$TOEFL.Score)
+par(opar)
+```
+
+
+## Step 4 Divide train/test
+
+* Divide into 75/25 train/test, using seed 1234
+
+```{r}
+set.seed(1234)
+i <- sample(1:nrow(df), nrow(df)*0.75, replace = FALSE)
+train <- df[i,]
+test <- df[-i,]
+```
+
+## Step 5 Build a Model with all predictors 
+
+* Build a model, predicting Admit from all predictors
+* Output a summary of the model
+* Did you get an error? Why? Hint: see p. 120 Warning
+
+Your commentary here: 
+Yes I did get an error. These errors came from the training data perfectly fitting or nearly perfectly fitting linearly separable. The data was too easy to classify. Since the admit column was purely based on the chance of admit column it makes sense that if the chance of admit column is used as a predictor that the data would fit pretty much perfectly causing R to give the warnings.
+
+```{r}
+glm1 <- glm(Chance.greater.Than.Half~., data=train, family="binomial")
+summary(glm1)
+```
+
+## Step 6 Build a Model with all predictors except Chance.of.Admit
+
+* Build another model, predicting Admit from all predictors *except* Chance.of.Admit
+* Output a summary of the model
+* Did you get an error? Why or why not?
+
+Your commentary here:
+I did not get any warnings or errors this time because chance of admit was taken out and as mentioned in the previous step, since the admit column came from the chance of admit column it would fit the data overly well and since it was taken out R doesn't see the problem anymore. 
+
+```{r}
+glm2 <- glm(Chance.greater.Than.Half~.-Chance.of.Admit, data=train, family="binomial")
+summary(glm2)
+```
+
+## Step 7 Predict probabilities
+
+* Predict the probabilities using type="response"
+* Examine a few probabilities and the corresponding Chance.of.Admit values
+* Run cor() on the predicted probs and the Chance.of.Admit, and output the correlation
+* What do you conclude from this correlation. 
+
+Your commentary here:
+The correlation was about 0.65 which isn't that strong. I would conclude that using all the predictors from the data isn't a very good way to see the chance of admission.
+
+```{r}
+probs <- predict(glm2, newdata = test, type="response")
+cor(probs,test$Chance.of.Admit)
+```
+
+## Step 8 Make binary predictions, print table and accuracy
+
+* Now make binary predictions
+* Output a table comparing the predictions and the binary Admit column
+* Calculate and output accuracy
+* Was the model able to generalize well to new data?
+
+Your commentary here:
+The model was able to generalize to the new data very well. The accuracy was 0.94 which is really high.
+
+```{r}
+pred <- ifelse(probs>0.5,1,0)
+acc <- mean(pred==test$Chance.greater.Than.Half)
+print(paste("accuracy =",acc))
+table(pred, test$Chance.greater.Than.Half)
+```
+
+## Step 9 Output ROCR and AUC
+
+* Output a ROCR graph
+* Extract and output the AUC metric
+
+```{r}
+library(ROCR)
+pr <- prediction(probs, test$Chance.greater.Than.Half)
+prf <- performance(pr, measure="tpr", x.measure = "fpr")
+plot(prf)
+
+auc <- performance(pr, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+
+
+## Step 10
+
+* Make two more graphs and comment on what you learned from each graph:
+  * Admit on x axis, SOP on y axis
+  * Research on x axis, SOP on y axis
+  
+Your commentary here:
+The graph of admit and SOP it shows that the entries that were true for admit had a greater SOP score compared to the ones who were false although the error bars are pretty big for both values. The same can be said for the second graph with research and SOP scores. Those who did research had a higher SOP score. The mean SOP score for those did research is about the same as the mean SOP score of those in the true for admit, however the mean of those that didn't do research was higher than the mean of those who were false for admit.
+
+```{r}
+plot(as.factor(df$Chance.greater.Than.Half), df$SOP)
+```
+
+```{r}
+plot(df$Research, df$SOP)
+```
+

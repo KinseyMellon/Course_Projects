@@ -1,0 +1,195 @@
+---
+title: "R Project Classification Notebook"
+subtitle: "4375 Machine Learning with Dr. Mazidi"
+author: "Kinsey Mellon"
+date: "7/16/22"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+ 
+Data website: https://www.kaggle.com/datasets/kaggle/san-francisco-crime-classification?select=test.csv
+
+### Load the data set and do some data cleaning
+
+  - omit any NA
+  - shorten the data set by only including specific categories of crime
+  - get rid of columns that won't be used
+
+```{r}
+library(caret)
+dfC <- read.csv("SFCrime.csv")
+dfC <- na.omit(dfC)
+dfC <- dfC[c(which(dfC$Category == "LARCENY/THEFT"), which(dfC$Category == "VANDALISM"), which(dfC$Category == "ASSAULT")),]
+dfC$DayOfWeek <- as.factor(dfC$DayOfWeek)
+dfC$PdDistrict <- as.factor(dfC$PdDistrict)
+dfC$Resolution <- as.factor(dfC$Resolution)
+dfC$Category <- as.factor(dfC$Category)
+```
+
+### Data Exploration
+
+```{r}
+summary(dfC)
+str(dfC)
+table(dfC$Category, dfC$DayOfWeek)
+unique(dfC$PdDistrict)
+head(dfC)
+```
+
+### Graphs
+
+```{r}
+library(ggplot2)
+ggplot(data=dfC,aes(x=Category))+ geom_bar() + theme_bw()
+ggplot(data=dfC,aes(x=DayOfWeek))+ geom_bar() + theme_bw()
+
+```
+
+### Divide into train and test
+
+```{r}
+set.seed(1234)
+i <- sample(1:nrow(dfC), 0.75*nrow(dfC), replace=FALSE)
+train <- dfC[i,]
+test <- dfC[-i,]
+```
+
+
+### Logistic Regression:
+
+#### Commentary:
+  I did multi-class classification for the logistic regression model. The features chosen are day of the week and pd district to predict the category of the crime (limited to larceny/theft, vandalism, or assault). These features were chosen because out of all the features I was most curious about how these would model for predicting the category of crime and from the data exploration seemed to be the ones that were most likely of being good features for predicting category. The accuracy for the models for larceny/theft, vandalism, and assault were .65, .88, and .78, respectfully with vandalism having the highest out of the three. The sensitivity and specificity were calculated for each model. For the larceny/theft model it had a high specificity and low sensitivity. For both the vandalism and assault models, the model only predicted that the category of the crime was not vandalism or assault for each respective model so the sensitivty is 0 and the specificity is 1.
+
+```{r}
+
+Crime_Theft <- dfC
+Crime_Theft$Category <- as.factor(ifelse (Crime_Theft$Category=="LARCENY/THEFT",1,0))
+
+Crime_Vand <- dfC
+Crime_Vand$Category <- as.factor(ifelse (Crime_Vand$Category=="VANDALISM",1,0))
+
+Crime_A <- dfC
+Crime_A$Category <- as.factor(ifelse (Crime_A$Category=="ASSAULT",1,0))
+
+set.seed(1234)
+i <- sample(1:nrow(dfC), 0.75*nrow(dfC), replace=FALSE)
+print("Larceny/theft")
+train2 <- Crime_Theft[i,]
+test2 <- Crime_Theft[-i,]
+glm1 <- glm(Category~DayOfWeek + PdDistrict, data=train2, family="binomial")
+probs <- predict(glm1, newdata = test2)
+pred <- ifelse(probs>0.5,1,0)
+acc <- mean(pred==test2$Category)
+print(paste("accuracy = ",acc))
+tab <- table(pred,test2$Category)
+print(tab)
+print(paste("sensitivity = ", sensitivity(tab)))
+print(paste("specificity = ", specificity(tab)))
+
+print("Vandalism")
+train2 <- Crime_Vand[i,]
+test2 <- Crime_Vand[-i,]
+glm1 <- glm(Category~DayOfWeek + PdDistrict, data=train2, family="binomial")
+probs <- predict(glm1, newdata = test2)
+pred <- ifelse(probs>0.5,1,0)
+acc <- mean(pred==test2$Category)
+print(paste("accuracy = ",acc))
+tab <- table(pred,test2$Category)
+print(tab)
+print(paste("sensitivity = ", 0/0+tab[1,2]))
+print(paste("specificity = ", tab[1,1]/tab[1,1]+0))
+
+
+print("Assault")
+train2 <- Crime_A[i,]
+test2 <- Crime_A[-i,]
+glm1 <- glm(Category~DayOfWeek + PdDistrict, data=train2, family="binomial")
+probs <- predict(glm1, newdata = test2)
+pred <- ifelse(probs>0.5,1,0)
+acc <- mean(pred==test2$Category)
+print(paste("accuracy = ",acc))
+tab <- table(pred,test2$Category)
+print(tab)
+print(paste("sensitivity = ", 0/0+tab[1,2]))
+print(paste("specificity = ", tab[1,1]/tab[1,1]+0))
+```
+
+
+
+### Decision Trees:
+
+#### Commentary:
+  The next algorithm I used on this data set was decision tree and random forest. For both algorithms I used day of week, pd district, and resolution as the features to predict the category of crime. I choose these for the same reason I choose them in the logistic regression model. For the basic decision tree model the accuracy I got was .716 which is high but not very strong. I then decided to try random forest to compare and the accuracy I got for that model was only just slightly better at .72.
+
+```{r}
+library(tree)
+library(randomForest)
+set.seed(1234)
+tree <- tree(Category~DayOfWeek + PdDistrict + Resolution, data=train)
+tree
+summary(tree)
+plot(tree)
+text(tree, cex=0.75, pretty=0)
+pred <- predict(tree, newdata=test,type="class")
+table(pred,test$Category)
+print(paste("decision tree accuracy = ",mean(pred==test$Category)))
+
+randFor <- randomForest(Category~DayOfWeek+PdDistrict+Resolution, data=train, importance=TRUE)
+pred2 <- predict(randFor, newdata=test,type="class")
+table(pred2,test$Category)
+print(paste("random forest accuracy = ",mean(pred2==test$Category)))
+```
+
+
+### Naive Bayes:
+
+#### Commentary:
+  The last algorithm I wanted to run on this data set was naive bayes. The same features of day of week, pd district and resolution were used to predict the category of crime for the same reasons as the above two models. For the naive bayes models I had to do multi-class classification like that was implemented in the logistic regression models. For predicting larceny/theft, vandalism, and assault the accuracies were .73, .88, and .82 respectfully with larceny/theft being the most accurate out of the three. The sensitivity and specificity were also calculated for each model. For larceny/theft the specificity was really high with a low sensitivty while it was the opposite for both vandalism and assault.
+
+
+```{r}
+library(e1071)
+Crime_Theft <- dfC
+Crime_Theft$Category <- as.factor(ifelse (Crime_Theft$Category=="LARCENY/THEFT",1,0))
+
+Crime_Vand <- dfC
+Crime_Vand$Category <- as.factor(ifelse (Crime_Vand$Category=="VANDALISM",1,0))
+
+Crime_A <- dfC
+Crime_A$Category <- as.factor(ifelse (Crime_A$Category=="ASSAULT",1,0))
+
+fun <- function(df, i){
+  train2 <- df[i,]
+  test2 <- df[-i,]
+  nb <- naiveBayes(Category~DayOfWeek + PdDistrict+Resolution, data=train2)
+  probs <- predict(nb, newdata = test2, type="class")
+  acc <- mean(probs==test2$Category)
+  print(paste("accuracy = ",acc))
+  tab <- table(probs,test2$Category)
+  print(tab)
+  print(paste("sensitivty = ",sensitivity(tab)))
+  print(paste("specificity = ",specificity(tab)))
+  
+  
+}
+
+set.seed(1234)
+i <- sample(1:nrow(dfC), 0.75*nrow(dfC), replace=FALSE)
+print("Larceny/theft")
+fun(Crime_Theft,i)
+print("Vandalism")
+fun(Crime_Vand,i)
+print("Assault")
+fun(Crime_A,i)
+
+```
+
+
+### Final Analysis:
+  Overall, I would rank the algorithms from best to worse performance on this data in the following way, best being naive bayes followed by decision tree/random forest, and the in last logistic regression. I rank naive bayes first because for each model created in the multi-class classification the accuracies were higher than the accuracies from the other algorithms. Looking at all the performances from the algorithms I wouldn't say any one did a stand out job for modeling the data since each accuracy was between .6 and .8 but on the flip side none did a horrible job either. I think naive bayes did the best for this data because the features were all pretty independent from each other and that works well for the naive bayes algorithm. Looking at the big picture, this script was able to learn that day of the week, pd district, and resolution are somewhat strong predictors for the category crime in San Francisco. This might be useful for seeing patterns in the common types and aspects of certain crimes and where they are located in San Francisco but since this data set was stripped down for this project I think testing with other categories of crime and areas would give a much better/concrete picture.
+
+
+
+

@@ -1,0 +1,43 @@
+LOGISTIC REGRESSION PART
+
+Read in the titanic file and create the train and test sections
+```{r}
+df <- read.csv("titanic_project.csv")
+train <- df[1:900,]
+test <- df[901:nrow(df),]
+```
+
+make the model and print the coefficients
+```{r}
+glm <- glm(survived~pclass,data=train, family="binomial")
+coeffs <- summary(glm)$coefficients[,1]
+print(paste("intercept: ",coeffs[1]))
+print(paste("pclass coefficeint: ",coeffs[2]))
+```
+
+print metrics
+```{r}
+probs <- predict(glm, newdata = test, type = "response")
+pred <- ifelse(probs>0.5,1,0)
+acc <- mean(pred==test$survived)
+print(paste("accuracy = ", acc))
+table <- table(pred,test$survived)
+sensitivity <- table[2,2] / (table[2,2] + table[1,2])
+specificity <- table[1,1] / (table[1,1] + table[2,1])
+print(paste("sensitivity = ", sensitivity))
+print(paste("specificity = ", specificity))
+```
+
+graphs
+```{r}
+pr <- prediction(probs, test$survived)
+prf <- performance(pr, measure="tpr", x.measure = "fpr")
+plot(prf)
+
+plot(as.factor(df$survived),df$age)
+```
+```{r}
+head(df)
+summary(df)
+```
+
