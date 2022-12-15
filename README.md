@@ -21,3 +21,5 @@ A collection of sample course projects
 ### Pacman Game
 [link](https://github.com/KinseyMellon/Course_Projects/blob/main/message%20(14).txt)
 
+### Machine learning algorithms using R
+
